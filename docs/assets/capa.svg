@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="460" viewBox="0 0 1400 460" role="img" aria-labelledby="title desc">
+<title id="title">Telemetria sob ruído real</title>
+<desc id="desc">Projeto IFMT com três ESP32, comunicação UART e comparação entre soma modular e CRC-8.</desc>
+<defs>
+ <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#0b192c"/><stop offset="1" stop-color="#142e43"/></linearGradient>
+ <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#345268" opacity=".3"/></pattern>
+</defs>
+<rect width="1400" height="460" rx="28" fill="url(#bg)"/>
+<rect width="1400" height="460" rx="28" fill="url(#grid)"/>
+<rect x="64" y="49" width="9" height="24" rx="4" fill="#55d6ad"/>
+<text x="88" y="69" fill="#a5c4d6" font-family="Arial, sans-serif" font-size="20" letter-spacing="3">IFMT / ENGENHARIA DA COMPUTAÇÃO</text>
+<text x="64" y="142" fill="#f2f7fc" font-family="Arial, sans-serif" font-size="55" font-weight="700">Telemetria sob ruído real</text>
+<text x="66" y="184" fill="#a7c0d4" font-family="Arial, sans-serif" font-size="23">Detecção de erros em um enlace serial entre placas ESP32</text>
+<g font-family="Arial, sans-serif">
+ <rect x="65" y="229" width="367" height="120" rx="15" fill="#1b344a" stroke="#34566d"/>
+ <rect x="458" y="229" width="470" height="120" rx="15" fill="#153b40" stroke="#4ca996"/>
+ <rect x="954" y="229" width="380" height="120" rx="15" fill="#1b344a" stroke="#34566d"/>
+ <text x="90" y="267" fill="#68dabe" font-size="18" letter-spacing="2">01 / TX</text>
+ <text x="90" y="302" fill="#edf5fc" font-size="26" font-weight="700">Gera e transmite</text>
+ <text x="90" y="327" fill="#a5bdce" font-size="17">Quadro · sequência · SUM ou CRC</text>
+ <text x="484" y="267" fill="#68dabe" font-size="18" letter-spacing="2">02 / NOISE</text>
+ <text x="484" y="302" fill="#edf5fc" font-size="26" font-weight="700">Perturba a linha física</text>
+ <text x="484" y="327" fill="#a5bdce" font-size="17">Pulsos controlados · observação antes e depois</text>
+ <text x="980" y="267" fill="#68dabe" font-size="18" letter-spacing="2">03 / RX</text>
+ <text x="980" y="302" fill="#edf5fc" font-size="26" font-weight="700">Verifica e classifica</text>
+ <text x="980" y="327" fill="#a5bdce" font-size="17">Aceita · descarta · audita</text>
+</g>
+<path d="M66 389h124l12-13 16 26 15-26 14 13h173l12-13 16 26 15-26 14 13h175l12-13 16 26 15-26 14 13h148" fill="none" stroke="#55d6ad" stroke-width="3" opacity=".7"/>
+<text x="1000" y="397" fill="#c6dbe8" font-family="Arial, sans-serif" font-size="20">115200 bit/s · SUM × CRC-8</text>
+</svg>
