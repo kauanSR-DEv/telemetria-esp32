@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -20,6 +21,24 @@ except ImportError:
     tk = ttk = messagebox = None
 
 from registros import ROOT, organize, consolidate
+
+VERSION = '1.2'
+
+
+def reported_role(line):
+    """Reconhece papéis por STATUS ou comandos, sem exigir frase exata do HELP."""
+    text = line.strip().upper()
+    status = re.match(r'^#?\s*STATUS\s*,\s*(TX|NOISE)\s*,', text)
+    if status:
+        return status.group(1)
+    if re.match(r'^#?\s*RX\s+PRONTO\b', text) or 'START PREPARA RX' in text:
+        return 'RX'
+    words = set(re.findall(r'[A-Z]+', text))
+    if {'MODE', 'SEED', 'START', 'STATUS'} <= words:
+        return 'NOISE'
+    if {'HELP', 'SUM', 'CRC', 'START', 'STOP', 'STATUS'} <= words:
+        return 'RX' if 'END' in words else 'TX'
+    return None
 
 
 class Port:
@@ -85,6 +104,7 @@ class Session:
     def __init__(self, config, events, cancelled):
         self.config, self.events, self.cancelled = config, events, cancelled
         self.ports, self.folder = {}, None
+        self.start_sent = set()
 
     def check(self):
         if self.cancelled.is_set():
@@ -109,7 +129,32 @@ class Session:
                 if predicate(line):
                     return line
             time.sleep(0.03)
-        raise RuntimeError(f'{role}: sem resposta esperada. Confira porta, firmware e Monitor Serial fechado.')
+        received = self.ports[role].snapshot()[mark:][-4:]
+        diagnostic = ' | '.join(received) if received else '(nenhuma linha recebida)'
+        raise RuntimeError(f'{role}: sem resposta esperada. Resposta recebida: {diagnostic}')
+
+    def identify(self, role, attempts=3, timeout=2):
+        """STATUS/HELP são consultas: repetir é seguro antes de START."""
+        first_mark = len(self.ports[role].snapshot())
+        for attempt in range(attempts):
+            mark = self.command(role, 'STATUS')
+            self.command(role, 'HELP')
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                self.check()
+                for line in self.ports[role].snapshot()[mark:]:
+                    found = reported_role(line)
+                    if found and found != role:
+                        raise RuntimeError(f'Porta de {role}: a placa respondeu como {found}. Corrija a seleção das portas.')
+                    if found == role:
+                        self.events.put(('log', f'{role}: placa identificada ({line.strip()})'))
+                        return
+                time.sleep(0.03)
+            if attempt + 1 < attempts:
+                self.events.put(('log', f'{role}: repetindo identificação ({attempt + 2}/{attempts})…'))
+        received = self.ports[role].snapshot()[first_mark:][-6:]
+        diagnostic = ' | '.join(received) if received else '(nenhuma linha recebida)'
+        raise RuntimeError(f'{role}: não foi possível identificar a placa. Resposta recebida: {diagnostic}. Consulte {role.lower()}.txt.')
 
     def command(self, role, command):
         self.check()
@@ -129,7 +174,7 @@ class Session:
         name = now.strftime('%Y%m%d_%H%M%S_%f') + f'_{cfg["tecnica"]}_M{cfg["modo"]}_seed{cfg["seed"]}'
         self.folder = ROOT / 'resultados/coletas' / name
         self.folder.mkdir(parents=True, exist_ok=False)
-        meta = {'iniciada_em': now.isoformat(), 'estado': 'EM_ANDAMENTO', 'configuracao': cfg,
+        meta = {'iniciada_em': now.isoformat(), 'estado': 'EM_ANDAMENTO', 'configuracao': cfg, 'coletor_versao': VERSION,
                 'python': sys.version.split()[0],
                 'firmware_sha256': {p.parent.name: hashlib.sha256(p.read_bytes()).hexdigest()
                                     for p in (ROOT / 'firmware').rglob('*.ino')}}
@@ -144,13 +189,8 @@ class Session:
                 self.ports[role] = Port(cfg['portas'][role], role, self.folder, self.events)
             # Alguns adaptadores reiniciam a placa ao abrir a porta, mesmo com DTR/RTS baixos.
             self.pause(3)
-            identities = {
-                'TX': lambda s: s == '# HELP SUM CRC START [1..1000] STOP STATUS BENCH',
-                'RX': lambda s: s == '# HELP SUM CRC START [1..1000] END STOP STATUS BENCH',
-                'NOISE': lambda s: s.startswith('# MODE 0|1|2|3; SEED '),
-            }
-            for role, predicate in identities.items():
-                self.request(role, 'HELP', predicate)
+            for role in ('TX', 'RX', 'NOISE'):
+                self.identify(role)
             tech = 'SUM' if cfg['tecnica'] == 'SUM' else 'CRC'
             printed = 'SUM' if tech == 'SUM' else 'CRC8'
             self.request('TX', tech, lambda s: s.startswith('# STATUS,TX,') and f'tecnica={printed},' in s and 'ativo=0,' in s)
@@ -159,6 +199,7 @@ class Session:
             self.request('NOISE', f'SEED {cfg["seed"]}', lambda s: s == f'# SEED={cfg["seed"]}')
             starts = {}
             for role in ('RX', 'NOISE', 'TX'):
+                self.start_sent.add(role)
                 starts[role] = self.command(role, f'START {cfg["N"]}')
                 self.wait_line(role, starts[role], lambda s, r=role: s.startswith(f'# START,{r},') and f'N={cfg["N"]},' in s)
             self.events.put(('log', 'Sessão em execução. Os registros estão sendo salvos automaticamente.'))
@@ -173,11 +214,11 @@ class Session:
             self.pause(0.5)  # Drena diagnósticos e a média impressa após o resumo.
             meta['estado'] = 'CONCLUIDA'
         except Exception as exc:
-            meta['estado'], meta['erro'] = 'INTERROMPIDA', str(exc)
+            meta['estado'], meta['erro'] = 'INTERROMPIDA' if self.start_sent else 'NAO_INICIADA', str(exc)
             self.events.put(('log', str(exc)))
             # STOP aborta; nunca se envia END para fingir uma rodada completa.
             for role in ('TX', 'NOISE', 'RX'):
-                if role in self.ports:
+                if role in self.ports and role in self.start_sent:
                     try:
                         self.commands.writerow([datetime.now().astimezone().isoformat(), role, 'STOP'])
                         self.ports[role].send('STOP')
@@ -194,8 +235,20 @@ class Session:
             self.command_file.close()
             meta['finalizada_em'] = datetime.now().astimezone().isoformat()
             meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        summary = organize(self.folder)
-        consolidate()
+        if self.start_sent:
+            summary = organize(self.folder)
+            consolidate()
+        else:
+            # Sem START, não existem quadros a classificar: evita uma cascata
+            # enganosa de "faltam cabeçalhos/arquivos/técnica".
+            summary = {'coleta_valida': False, 'elegivel_tabela_final': False,
+                       'estado': 'NAO_INICIADA', 'pendencias': [meta.get('erro', 'Ensaio não iniciado.')],
+                       'coletor_versao': VERSION}
+            (self.folder / 'resumo.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            (self.folder / 'resumo.md').write_text(
+                '# Ensaio não iniciado\n\n' + summary['pendencias'][0] +
+                '\n\nNão houve START nesta tentativa. Os TXT disponíveis preservam as respostas de diagnóstico; as tabelas finais não foram alteradas.\n',
+                encoding='utf-8')
         self.events.put(('finished', (self.folder, summary)))
 
 
@@ -204,7 +257,7 @@ class App:
         self.root = root
         self.events, self.cancelled = queue.Queue(), threading.Event()
         self.busy, self.last_folder = False, None
-        root.title('Telemetria ESP32 | Coletor de ensaios')
+        root.title(f'Telemetria ESP32 | Coletor de ensaios v{VERSION}')
         root.geometry('920x700')
         root.minsize(760, 620)
         style = ttk.Style()
@@ -318,11 +371,17 @@ class App:
                 elif kind == 'finished':
                     self.last_folder, s = value
                     self.unlock()
-                    state = 'VÁLIDA' if s['coleta_valida'] else 'REVISAR'
-                    self.status.set(f'Coleta {state}. Arquivos em: {self.last_folder.name}')
-                    self.append(f'Finalizado: {state}. Consulte resumo.md para resultados e pendências.')
+                    state = 'VÁLIDA COM RESSALVAS' if s.get('situacao') == 'VALIDA_COM_RESSALVAS' else 'VÁLIDA' if s['coleta_valida'] else 'REVISAR'
+                    if s.get('estado') == 'NAO_INICIADA':
+                        self.status.set(f'Ensaio não iniciado. Diagnóstico em: {self.last_folder.name}')
+                        self.append('Nenhum START enviado nesta tentativa; as tabelas não foram alteradas.')
+                    else:
+                        self.status.set(f'Coleta {state}. Arquivos em: {self.last_folder.name}')
+                        self.append(f'Finalizado: {state}. Consulte resumo.md para resultados e pendências.')
                     for issue in s['pendencias'][:6]:
                         self.append('• ' + issue)
+                    for warning in s.get('ressalvas', [])[:6]:
+                        self.append('Ressalva: ' + warning)
                     if s['coleta_valida'] and not s['elegivel_tabela_final']:
                         self.append('Ensaio curto: não entra nas tabelas oficiais de 1000 quadros.')
                 elif kind == 'fatal':

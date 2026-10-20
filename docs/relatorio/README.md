@@ -1,7 +1,5 @@
 # Relatório
 
-Coloque nesta pasta a versão revisada do relatório, preferencialmente em PDF para leitura no GitHub. O DOCX pode ser mantido junto para edição pela equipe.
+[Abrir o relatório em Word](relatorio.docx).
 
-O modelo anterior ainda está sendo editado; ele não foi copiado automaticamente para evitar publicar uma versão desatualizada.
-
-Antes da entrega, confira os dados da capa, as fotos, as sete condições experimentais, os tempos medidos, a justificativa dos timeouts e o caso real de erro não detectado. Inclua o endereço real do repositório nas referências e abaixo das tabelas de resultados.
+O documento reúne a especificação, a montagem, os resultados das sete condições, as medidas de desempenho e o caso real de erro não detectado. Os [registros integrais](../../resultados/coletas/README.md) e as [tabelas](../../resultados/tabelas/README.md) permitem conferir os resultados.

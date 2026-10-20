@@ -4,6 +4,7 @@ Estes testes verificam o software de coleta/organização e não são ensaios f�
 """
 import csv
 import hashlib
+import io
 import json
 import queue
 import sys
@@ -36,6 +37,15 @@ def fixture(folder, n=2, classes=None, mode=0):
             dirty[5] = 0
         elif cls == 'NAO_DETECTADO':
             dirty[5] = dirty[6] = 0
+        elif cls == 'PERDIDO':
+            dirty[2] = 0
+        mask = [a ^ b for a, b in zip(data, dirty)]
+        if mode in (1, 2):
+            for bit in (2, 3):
+                if sum(v.bit_count() for v in mask) < mode:
+                    mask[2] |= 1 << bit
+        elif mode == 3:
+            mask[5] = 7
         actual = bytes(a ^ b for a, b in zip(data, dirty)).hex().upper()
         tx.append(f'1,SUM,{i},{100000+i*50000},{"NA" if i == 0 else 50000},8080,{original},3')
         accepted = cls in ('OK', 'NAO_DETECTADO')
@@ -46,10 +56,12 @@ def fixture(folder, n=2, classes=None, mode=0):
         rx.append(','.join(map(str, [2, 'SUM', i, i, i+1, 100000+i*50000,
                    'NA' if i == 0 else 50000, residue, decision, payload, '8080', matches,
                    'NA' if cls == 'PERDIDO' else 4, 'NA', cls, 'NA', 'ORDEM' if accepted else 'NA'])))
-        no.append(','.join(map(str, ['QUADRO', 3, mode, i, i, 100000+i*50000, 'NA',
-                  '0000000000000000', original, bytes(dirty).hex().upper(), 0,
+        positions = ';'.join(f'{j}.{k}' for j in range(8) for k in range(8) if mask[j] & (1 << k)) or 'NA'
+        ref = 'D391' + bytes(data[3:5]).hex().upper() + '028080'
+        no.append(','.join(map(str, ['QUADRO', 3, mode, i, i, 100000+i*50000, positions,
+                  bytes(mask).hex().upper(), original, bytes(dirty).hex().upper(), sum(v.bit_count() for v in mask),
                   sum((a ^ b).bit_count() for a, b in zip(data, dirty)), actual,
-                  'NA', 0, 'NA', 'D3910000028080', 'D3910000028080', 0, 'VALIDO'])))
+                  'NA', 0, 'NA', ref, ref, 0, 'VALIDO'])))
     tx.append(f'# DONE,TX,sessao=1,enviados={n}')
     rx += ['# RESUMO,sessao=2,N=%d,%s,INCONCLUSIVO=0,PENDENTE=0,taxa_percentual=NA,coleta_valida=SIM' %
            (n, ','.join(f'{k}={v}' for k, v in counts.items())), '# VERIFICACAO_MEDIA_US,4.0000,amostras=%d' % n]
@@ -157,8 +169,173 @@ class RegistrosTests(unittest.TestCase):
             p = ROOT / f'firmware/{role}/{role}.ino'
             self.assertEqual(hashlib.sha256(p.read_bytes()).hexdigest(), digest)
 
+    def damage_tx(self, seq=1, mismatch=False):
+        p = self.path / 'tx.txt'
+        lines = p.read_bytes().splitlines(keepends=True)
+        for i, line in enumerate(lines):
+            fields = line.rstrip().split(b',')
+            if len(fields) == 8 and fields[0].isdigit() and fields[2] == str(seq).encode():
+                frame = fields[6]
+                if mismatch:
+                    frame = frame[:-2] + b'00'
+                lines[i] = b'\xff' * 64 + b',' + frame + b',' + fields[7] + b'\n'
+                break
+        p.write_bytes(b''.join(lines))
+
+    def completed_meta(self, mode=0):
+        (self.path / 'sessao.json').write_text(json.dumps({
+            'estado': 'CONCLUIDA', 'configuracao': {'tecnica': 'SUM', 'modo': mode, 'N': 2, 'seed': 1}}))
+
+    def test_partial_tx_accepted_only_with_corroborated_frame_and_explicit_samples(self):
+        fixture(self.path)
+        self.completed_meta()
+        self.damage_tx()
+        originals = {p.name: p.read_bytes() for p in self.path.glob('*.txt')}
+        s = r.organize(self.path)
+        self.assertTrue(s['coleta_valida'], s['pendencias'])
+        self.assertEqual(s['situacao'], 'VALIDA_COM_RESSALVAS')
+        self.assertFalse(s['validacao_estrita_aprovada'])
+        self.assertEqual(s['auditoria_cruzada']['quadros_conferidos'], 2)
+        self.assertEqual(s['metricas']['calculo_tx_us']['amostras'], 1)
+        self.assertEqual(s['metricas']['intervalo_tx_us']['amostras'], 0)
+        self.assertEqual(originals, {p.name: p.read_bytes() for p in self.path.glob('*.txt')})
+        self.assertTrue(s['ressalvas'])
+
+    def test_missing_tx_frame_without_fragment_cannot_be_waived(self):
+        fixture(self.path)
+        self.completed_meta()
+        p = self.path / 'tx.txt'
+        p.write_bytes(b'\n'.join(l for l in p.read_bytes().splitlines() if not l.startswith(b'1,SUM,1,')) + b'\n')
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_corrupted_tx_fragment_with_different_frame_cannot_be_waived(self):
+        fixture(self.path)
+        self.completed_meta()
+        self.damage_tx(mismatch=True)
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_missing_receiver_row_cannot_be_waived(self):
+        fixture(self.path)
+        self.completed_meta()
+        self.damage_tx()
+        p = self.path / 'rx.txt'
+        p.write_bytes(b'\n'.join(l for l in p.read_bytes().splitlines() if not l.startswith(b'2,SUM,1,')) + b'\n')
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_bad_rx_auxiliary_can_be_waived_but_classifications_remain_complete(self):
+        fixture(self.path)
+        self.completed_meta()
+        p = self.path / 'rx.txt'
+        p.write_bytes(b'\xff'*64 + b'old summary\n' + p.read_bytes().replace(b'2,SUM,1,', b'\xff'*64 + b'3,reconciliar_depois\n2,SUM,1,'))
+        s = r.organize(self.path)
+        self.assertTrue(s['coleta_valida'], s['pendencias'])
+        self.assertEqual(s['situacao'], 'VALIDA_COM_RESSALVAS')
+        self.assertEqual(s['contagens']['OK'], 2)
+
+    def test_unknown_corrupted_line_remains_blocking(self):
+        fixture(self.path)
+        self.completed_meta()
+        p = self.path / 'rx.txt'
+        p.write_bytes(p.read_bytes() + b'\xff'*64 + b'unknown event\n')
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_waiver_requires_completed_session_metadata(self):
+        fixture(self.path)
+        self.damage_tx()
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_noise_quality_label_does_not_hide_inconsistent_bytes(self):
+        fixture(self.path)
+        self.change('noise.txt', '0000000000000000,A55A', '0000000000800000,A55A')
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
+    def test_correct_counts_with_wrong_residue_cannot_be_waived(self):
+        fixture(self.path)
+        self.completed_meta()
+        self.damage_tx()
+        self.change('rx.txt', ',00,ACEITO,', ',01,ACEITO,')
+        self.assertFalse(r.organize(self.path)['coleta_valida'])
+
 
 class CollectorTests(unittest.TestCase):
+    def identify_session(self, port):
+        s = coletar.Session({}, queue.Queue(), threading.Event())
+        s.ports['TX'] = port
+        s.command_file = io.StringIO()
+        s.commands = csv.writer(s.command_file)
+        return s
+
+    def test_identity_does_not_require_exact_help_text(self):
+        self.assertEqual(coletar.reported_role('# Comandos: HELP, SUM, CRC, START N, STOP, STATUS; BENCH'), 'TX')
+        self.assertEqual(coletar.reported_role('# HELP: SUM; CRC; START; END; STOP; STATUS'), 'RX')
+        self.assertEqual(coletar.reported_role('# STATUS,TX,tecnica=SUM,ativo=0,enviados=1000'), 'TX')
+        self.assertEqual(coletar.reported_role('# MODE 0 1 2 3 | SEED | START | STATUS'), 'NOISE')
+        self.assertIsNone(coletar.reported_role('rst:0x1 (POWERON_RESET)'))
+
+    def test_tx_can_be_identified_by_status_without_help(self):
+        class Port:
+            failure = None
+            def __init__(self): self.lines = []
+            def snapshot(self): return self.lines.copy()
+            def send(self, cmd):
+                if cmd == 'STATUS': self.lines.append('# STATUS,TX,tecnica=SUM,ativo=0,enviados=1000')
+        self.identify_session(Port()).identify('TX', attempts=1, timeout=0.1)
+
+    def test_identity_retries_a_lost_initial_command(self):
+        class Port:
+            failure = None
+            def __init__(self): self.lines, self.count = [], 0
+            def snapshot(self): return self.lines.copy()
+            def send(self, cmd):
+                if cmd == 'STATUS':
+                    self.count += 1
+                    if self.count == 2: self.lines.append('# STATUS,TX,tecnica=SUM,ativo=0')
+        p = Port()
+        self.identify_session(p).identify('TX', attempts=2, timeout=0.05)
+        self.assertEqual(p.count, 2)
+
+    def test_identity_points_out_swapped_ports(self):
+        class Port:
+            failure = None
+            def snapshot(self): return ['# STATUS,NOISE,ativo=0'] if hasattr(self, 'sent') else []
+            def send(self, cmd): self.sent = True
+        with self.assertRaisesRegex(RuntimeError, 'respondeu como NOISE'):
+            self.identify_session(Port()).identify('TX', attempts=1, timeout=0.1)
+
+    def test_identity_failure_exposes_actual_response(self):
+        class Port:
+            failure = None
+            def __init__(self): self.lines = []
+            def snapshot(self): return self.lines.copy()
+            def send(self, cmd): self.lines.append('Firmware de teste: resposta diferente')
+        with self.assertRaisesRegex(RuntimeError, 'Firmware de teste: resposta diferente'):
+            self.identify_session(Port()).identify('TX', attempts=1, timeout=0.05)
+
+    def test_failure_before_start_has_one_diagnostic_and_no_stop(self):
+        commands = []
+        class Port:
+            failure = None
+            def __init__(self, device, role, folder, events):
+                self.path = folder / (role.lower() + '.txt')
+                self.path.write_text('Diagnóstico pré-ensaio\n')
+            def snapshot(self): return []
+            def send(self, cmd): commands.append(cmd)
+            def close(self): pass
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(coletar, 'ROOT', Path(tmp)), patch.object(coletar, 'Port', Port), \
+             patch.object(coletar.Session, 'pause', lambda self, n: None), \
+             patch.object(coletar.Session, 'identify', side_effect=RuntimeError('TX: HELP incompatível')):
+            cfg = {'tecnica': 'SUM', 'modo': 0, 'N': 10, 'seed': 1,
+                   'portas': {'TX': 'fake1', 'RX': 'fake2', 'NOISE': 'fake3'}}
+            s = coletar.Session(cfg, queue.Queue(), threading.Event())
+            s.run()
+            result = json.loads((s.folder / 'resumo.json').read_text())
+            self.assertEqual(result['estado'], 'NAO_INICIADA')
+            self.assertEqual(result['pendencias'], ['TX: HELP incompatível'])
+            self.assertFalse(result['coleta_valida'])
+            self.assertFalse(any(c.startswith('START') or c == 'STOP' for c in commands))
+            self.assertFalse((Path(tmp) / 'resultados/tabelas').exists())
+
     def test_usb_fragments_preserve_exact_raw_bytes_and_complete_lines(self):
         chunks = [b'# STA', b'RT,TX\r\n1,', b'SUM,0\npartial']
 

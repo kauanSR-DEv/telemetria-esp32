@@ -1,16 +1,19 @@
 """Organiza uma rodada dos firmwares finais. Não depende de pyserial.
 
 Os TXT são evidência primária e nunca são alterados por este módulo.
-Uma coleta só entra na tabela final se houver evidência completa das 3 placas.
+As classificações exigem evidência completa do RX e do NOISE. Uma ressalva no
+TXT do TX só é aceita com os N quadros originais ainda preservados e conferidos.
 """
 from __future__ import annotations
 
 import csv
 import hashlib
 import json
+import re
 import statistics
 from collections import Counter
 from pathlib import Path
+from auditoria import audit
 
 ROOT = Path(__file__).resolve().parents[1]
 TX = 'sessao,tecnica,seq,t_inicio_us,intervalo_us,payload_hex,quadro_hex,calculo_us'.split(',')
@@ -68,6 +71,13 @@ def parse(path: Path, role: str, fields: list, issues: list) -> dict:
         issues.append(f'{role}: esperado um START; encontrados {len(starts)}. Separe as rodadas.')
     start = kv(lines[starts[0]]) if starts else {}
     active = lines[starts[0]:] if starts else lines
+    invalid_lines = []
+    for index, raw_line in enumerate(raw.split(b'\n')):
+        try:
+            raw_line.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            invalid_lines.append({'linha': index + 1, 'antes_start': bool(starts) and index < starts[0],
+                                  'texto': raw_line.decode('utf-8', errors='replace').rstrip('\r')})
     rows, header_seen = [], 0
     for line in active:
         if line.startswith('#') or not line.strip():
@@ -91,7 +101,8 @@ def parse(path: Path, role: str, fields: list, issues: list) -> dict:
             issues.append(f'{role}: {line}')
     summary = next((kv(s) for s in reversed(active) if s.startswith('# RESUMO,')), {})
     done = next((kv(s) for s in reversed(active) if s.startswith(f'# DONE,{role},')), {})
-    return {'start': start, 'rows': rows, 'lines': active, 'summary': summary, 'done': done}
+    return {'start': start, 'rows': rows, 'lines': active, 'summary': summary, 'done': done,
+            'invalid_lines': invalid_lines}
 
 
 def organize(folder: Path) -> dict:
@@ -180,6 +191,22 @@ def organize(folder: Path) -> dict:
         issues.append('Coletor: ' + str(meta['erro']))
     if meta.get('estado') and meta['estado'] != 'CONCLUIDA':
         issues.append('Coletor: sessão não concluída normalmente.')
+    strict_issues = list(dict.fromkeys(issues))
+    review = audit(records, n, technique, mode, meta)
+    if not review['erros'] and review['quadros_cruzados'] == n:
+        # Só esses avisos documentais podem virar ressalvas. Lacuna no RX,
+        # falha no NOISE, aborto e inconsistência física continuam impeditivos.
+        removable = {f'{role}: bytes inválidos para UTF-8 no TXT.' for role in ('TX', 'RX', 'NOISE')}
+        removable.add('TX: sequências ausentes, duplicadas ou fora da faixa.')
+        issues = [i for i in issues if i not in removable and not re.fullmatch(r'TX: \d+ registros; esperado \d+\.', i)]
+    issues.extend(review['erros'])
+    warnings = list(dict.fromkeys(review['ressalvas']))
+    state = 'REVISAR' if issues else 'VALIDA_COM_RESSALVAS' if warnings else 'VALIDA'
+    for e in evidence:
+        if e['tx_hex'] == 'NA':
+            fragment = next((f for f in review['fragmentos_tx'] if f['seq_no_quadro'] == e['seq']), None)
+            if fragment:
+                e['tx_hex'] = fragment['quadro_hex']
     denom = counts['CORROMPIDO'] + counts['NAO_DETECTADO']
     rate = 100 * counts['NAO_DETECTADO'] / denom if denom else None
     checks = {
@@ -193,6 +220,11 @@ def organize(folder: Path) -> dict:
         'tecnica': technique, 'modo': mode, 'N': n, 'seed': noise['start'].get('seed'),
         'contagens': {k: counts[k] for k in CLASSES}, 'taxa_nao_deteccao_percentual': rate,
         'coleta_valida': not issues, 'elegivel_tabela_final': not issues and n == 1000,
+        'situacao': state, 'validacao_estrita_aprovada': not strict_issues,
+        'ressalvas': warnings, 'avisos_validacao_estrita': strict_issues,
+        'auditoria_cruzada': {'quadros_conferidos': review['quadros_cruzados'],
+                             'quadros_tx_preservados': review['quadros_tx_preservados'],
+                             'fragmentos_tx': review['fragmentos_tx']},
         'pendencias': list(dict.fromkeys(issues)), 'metricas': checks, 'overhead_bytes': 6,
         'iniciada_em': meta.get('iniciada_em', ''),
         'sha256_logs': {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -200,22 +232,29 @@ def organize(folder: Path) -> dict:
     }
     for role, fields in [('TX', TX), ('RX', RX), ('NOISE', NOISE)]:
         save_csv(folder / f'{role.lower()}.csv', fields, records[role]['rows'])
+    save_csv(folder / 'tx_fragmentos.csv', ['linha_txt', 'seq_no_quadro', 'quadro_hex',
+             'calculo_us_preservado', 't_inicio_us', 'intervalo_us'], review['fragmentos_tx'])
     save_csv(folder / 'evidencias_nd.csv', ['seq', 'tx_hex', 'rx_hex_observado_noise', 'posicoes_alvo',
              'xor_medido', 'residuo_rx', 'payload_recebido', 'payload_original'], evidence)
     save_csv(folder / 'tabela_professor.csv', TABLE, [table_row(summary)])
     (folder / 'resumo.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    label = {'VALIDA': 'VÁLIDA', 'VALIDA_COM_RESSALVAS': 'VÁLIDA COM RESSALVAS', 'REVISAR': 'REVISAR'}[state]
     lines = [f'# {technique} · modo {mode}', '',
-             f'Coleta: **{"VÁLIDA" if not issues else "REVISAR"}** · N = {n} · semente = {summary["seed"]}', '',
+             f'Coleta: **{label}** · N = {n} · semente = {summary["seed"]}', '',
              '| Modo | OK | CORROMPIDO | PERDIDO | Não detectado | Taxa (%) |',
              '|---|---:|---:|---:|---:|---:|', markdown_row(summary), '',
-             'A tabela acima descreve esta coleta. Apenas coletas válidas com 1000 quadros entram nas tabelas finais.', '',
+             'A tabela descreve as decisões realmente registradas pelo RX. Apenas coletas válidas, inclusive com ressalvas explícitas, e com 1000 classificações entram nas tabelas finais.', '',
              '| Medida | Média | Mínimo | Máximo | Amostras |', '|---|---:|---:|---:|---:|']
     for key, val in checks.items():
         lines.append(f'| {key} | {fmt(val["media"])} | {fmt(val["minimo"])} | {fmt(val["maximo"])} | {val["amostras"]} |')
     lines += ['', 'Overhead: 6 bytes por quadro, excluindo referência e bits de início/parada.',
               'NA indica ausência de amostra ou denominador zero; não significa zero medido.', '',
-              '## Evidências', '', '[TX completo](tx.txt) · [RX completo](rx.txt) · [NOISE completo](noise.txt)', '',
+              '## Evidências', '', '[TXT original do TX](tx.txt) · [TXT original do RX](rx.txt) · [TXT original do NOISE](noise.txt)', '',
               '[Erros não detectados desta coleta](evidencias_nd.csv)', '']
+    if warnings:
+        lines += ['## Ressalvas de registro', ''] + ['- ' + i for i in warnings] + [
+            '', f'Auditoria cruzada: {review["quadros_cruzados"]} quadros conferidos entre TX, RX e NOISE.',
+            'Os TXT foram preservados. O CSV do TX e suas médias usam somente linhas completas; os fragmentos ficam separados em tx_fragmentos.csv, com timestamps ausentes marcados como NA.', '']
     if issues:
         lines += ['## Pendências', ''] + ['- ' + i for i in summary['pendencias']] + ['']
     (folder / 'resumo.md').write_text('\n'.join(lines), encoding='utf-8')
@@ -246,7 +285,7 @@ def consolidate(root: Path = ROOT) -> None:
     dest = root / 'resultados/tabelas'
     dest.mkdir(parents=True, exist_ok=True)
     lines = ['# Resultados consolidados', '',
-             'Somente rodadas válidas com 1000 quadros. Se houver repetição, usa-se a pasta datada mais recente.', '',
+             'Somente rodadas válidas com 1000 classificações do RX. As ressalvas de registro, quando aceitas pela auditoria cruzada, são indicadas nos links. Se houver repetição, usa-se a pasta datada mais recente.', '',
              'Taxa = ND / (CORROMPIDO + ND) × 100. NA: denominador zero. A coletar: sem rodada elegível.', '']
     for technique, modes in [('SUM', range(4)), ('CRC8', range(1, 4))]:
         rows = []
@@ -258,7 +297,8 @@ def consolidate(root: Path = ROOT) -> None:
                 s, folder = selected[(technique, mode)]
                 rows.append(table_row(s))
                 lines.append(markdown_row(s))
-                links.append(f'- Modo {mode}: [resumo e logs](../coletas/{folder.name}/resumo.md) · semente {s["seed"]}')
+                note = ' · **com ressalvas de registro**' if s.get('ressalvas') else ''
+                links.append(f'- Modo {mode}: [resumo e logs](../coletas/{folder.name}/resumo.md) · semente {s["seed"]}{note}')
             else:
                 rows.append(dict(zip(TABLE, [mode] + ['A coletar'] * 5)))
                 lines.append(f'| {mode} | A coletar | A coletar | A coletar | A coletar | A coletar |')

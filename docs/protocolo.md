@@ -42,7 +42,7 @@ Após uma checagem concluída, a busca continua depois de CHECK. LEN diferente d
 
 Cada sessão começa na sequência zero, com N entre 1 e 1000. A sequência cabe em 16 bits e admite o retorno de 65535 para zero, embora uma sessão de 1000 quadros não alcance essa volta.
 
-O rastreador usa diferença modular entre sequência aceita e esperada: zero significa ordem; de 1 a 32767, lacuna com atualização da expectativa; a partir de 32768, repetido ou fora de ordem. A sequência de um candidato reprovado não é considerada confiável para inferir lacunas. A auditoria reconcilia cada envio uma única vez com a referência posterior.
+Para cada quadro aceito, calcula-se d = (sequência recebida − sequência esperada) módulo 65536. Se d = 0, o quadro está em ordem. Se 1 ≤ d ≤ 32767, há d posições saltadas na sequência; nos dois casos, a próxima sequência esperada passa a ser a recebida mais um, módulo 65536. Valores de d a partir de 32768 são tratados como repetição ou chegada fora de ordem, sem alterar a expectativa. A passagem de 65535 para zero é tratada pelo cálculo modular, embora as sessões executadas usem somente as sequências de 0 a 999. A quantidade de posições saltadas não é somada diretamente ao total de PERDIDOS: a auditoria reconcilia os envios e identifica aqueles cuja checagem não foi concluída, sem contar novamente os já classificados como CORROMPIDO. A sequência de um quadro com checagem reprovada não é usada como valor confiável para calcular lacunas.
 
 ## Tempos e overhead
 
