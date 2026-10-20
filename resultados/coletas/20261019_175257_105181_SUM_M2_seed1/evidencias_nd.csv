@@ -1,0 +1,3 @@
+﻿seq,tx_hex,rx_hex_observado_noise,posicoes_alvo,xor_medido,residuo_rx,payload_recebido,payload_original
+147,A55A020093A59234,A55A020013259234,4.7;5.7,0000000080800000,00,2592,A592
+799,A55A02031FF416D2,A55A02031F741652,5.7;7.7,0000000000800080,00,7416,F416

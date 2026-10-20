@@ -1,0 +1,23 @@
+{
+  "iniciada_em": "2026-10-19T17:50:48.578874-04:00",
+  "estado": "CONCLUIDA",
+  "configuracao": {
+    "portas": {
+      "TX": "COM14",
+      "RX": "COM15",
+      "NOISE": "COM9"
+    },
+    "tecnica": "SUM",
+    "modo": 1,
+    "seed": 1,
+    "N": 1000
+  },
+  "coletor_versao": "1.1",
+  "python": "3.13.16",
+  "firmware_sha256": {
+    "noise": "79ef9c6ae29f69a13780c1b80c1d1ec34a2041c048cf4a94f7b4202dffc86858",
+    "rx": "863b5352d6cb54b0d41614865c9c6ac35eb315f2333158d91cb6d32f1387cd1d",
+    "tx": "b9a2b4cacf6132e590e75c111e33c3c57a8ade5944051f5f794c46cb5a91ceef"
+  },
+  "finalizada_em": "2026-10-19T17:51:43.855133-04:00"
+}

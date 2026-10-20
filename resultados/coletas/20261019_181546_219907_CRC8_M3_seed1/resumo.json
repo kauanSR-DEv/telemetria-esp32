@@ -1,0 +1,64 @@
+{
+  "tecnica": "CRC8",
+  "modo": 3,
+  "N": 1000,
+  "seed": "1",
+  "contagens": {
+    "OK": 167,
+    "CORROMPIDO": 747,
+    "PERDIDO": 86,
+    "NAO_DETECTADO": 0
+  },
+  "taxa_nao_deteccao_percentual": 0.0,
+  "coleta_valida": true,
+  "elegivel_tabela_final": true,
+  "situacao": "VALIDA",
+  "validacao_estrita_aprovada": true,
+  "ressalvas": [],
+  "avisos_validacao_estrita": [],
+  "auditoria_cruzada": {
+    "quadros_conferidos": 1000,
+    "quadros_tx_preservados": 1000,
+    "fragmentos_tx": []
+  },
+  "pendencias": [],
+  "metricas": {
+    "calculo_tx_us": {
+      "amostras": 1000,
+      "media": 3.002,
+      "minimo": 3.0,
+      "maximo": 4.0
+    },
+    "verificacao_rx_us": {
+      "amostras": 914,
+      "media": 6.308533916849015,
+      "minimo": 6.0,
+      "maximo": 8.0
+    },
+    "intervalo_tx_us": {
+      "amostras": 999,
+      "media": 50999.997997998,
+      "minimo": 50998.0,
+      "maximo": 51000.0
+    },
+    "intervalo_rx_us": {
+      "amostras": 999,
+      "media": 50999.98998998999,
+      "minimo": 50916.0,
+      "maximo": 51011.0
+    },
+    "recuperacao_rx_ms": {
+      "amostras": 49,
+      "media": 350.86869387755104,
+      "minimo": 51.112,
+      "maximo": 2040.115
+    }
+  },
+  "overhead_bytes": 6,
+  "iniciada_em": "2026-10-19T18:15:46.219907-04:00",
+  "sha256_logs": {
+    "tx.txt": "b93f39638be80e319b77782b3d89efdf7b19cc35ebb6956572aa3648b69001af",
+    "rx.txt": "a5df512b05f1be5bbe6169cd9e28bd66b6932676fb0c36b3d3f7e20ff10ea7f3",
+    "noise.txt": "2c2987e63e37b5a23c45a6b68ba682537bb45e588fd1fd785de45b2f7d08e2cc"
+  }
+}

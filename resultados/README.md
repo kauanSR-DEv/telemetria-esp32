@@ -1,10 +1,9 @@
-# Resultados e evidências
+# Resultados experimentais
 
-- **[Tabelas comparativas](tabelas/README.md):** SUM nos modos 0–3 e CRC-8 nos modos 1–3.
-- **[Coletas](coletas/):** uma pasta por rodada, com os TXT originais, CSVs e resumo.
+As sete condições foram coletadas em 19/10/2026, com N = 1000 e semente 1. SUM cobre os modos 0 a 3; CRC-8 cobre os modos 1 a 3.
 
-A coleta final ainda será realizada. Nenhuma contagem histórica foi preenchida como resultado novo do NOISE 1.12.
+- [Tabelas consolidadas](tabelas/README.md): contagens, taxa e links para as rodadas.
+- [Coletas completas](coletas/README.md): registros originais, CSVs e metadados.
+- [Erro não detectado real](../docs/erro-nao-detectado.md): bytes e cálculo de SUM.
 
-Cada rodada precisa dos registros completos de TX, RX e NOISE. Não edite os TXT para corrigir uma coleta com falha: preserve os arquivos e faça uma nova rodada. Os arquivos gerados pelo organizador podem ser regenerados a partir dos TXT.
-
-O resumo inclui SHA-256 dos registros para facilitar a conferência. Um hash identifica o arquivo; ele não substitui a validação física do experimento.
+CRC-8 modo 1 é apresentado com ressalva de integridade documental, descrita no resumo da rodada. As demais seis condições passaram pela validação estrita. Os registros originais foram mantidos sem alteração.

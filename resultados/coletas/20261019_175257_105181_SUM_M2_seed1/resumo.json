@@ -1,0 +1,64 @@
+{
+  "tecnica": "SUM",
+  "modo": 2,
+  "N": 1000,
+  "seed": "1",
+  "contagens": {
+    "OK": 384,
+    "CORROMPIDO": 576,
+    "PERDIDO": 38,
+    "NAO_DETECTADO": 2
+  },
+  "taxa_nao_deteccao_percentual": 0.3460207612456747,
+  "coleta_valida": true,
+  "elegivel_tabela_final": true,
+  "situacao": "VALIDA",
+  "validacao_estrita_aprovada": true,
+  "ressalvas": [],
+  "avisos_validacao_estrita": [],
+  "auditoria_cruzada": {
+    "quadros_conferidos": 1000,
+    "quadros_tx_preservados": 1000,
+    "fragmentos_tx": []
+  },
+  "pendencias": [],
+  "metricas": {
+    "calculo_tx_us": {
+      "amostras": 1000,
+      "media": 1.001,
+      "minimo": 1.0,
+      "maximo": 2.0
+    },
+    "verificacao_rx_us": {
+      "amostras": 962,
+      "media": 3.27027027027027,
+      "minimo": 3.0,
+      "maximo": 4.0
+    },
+    "intervalo_tx_us": {
+      "amostras": 999,
+      "media": 50999.998998999,
+      "minimo": 50999.0,
+      "maximo": 51000.0
+    },
+    "intervalo_rx_us": {
+      "amostras": 999,
+      "media": 50999.98898898899,
+      "minimo": 50919.0,
+      "maximo": 51007.0
+    },
+    "recuperacao_rx_ms": {
+      "amostras": 35,
+      "media": 121.05694285714286,
+      "minimo": 51.109,
+      "maximo": 612.112
+    }
+  },
+  "overhead_bytes": 6,
+  "iniciada_em": "2026-10-19T17:52:57.105181-04:00",
+  "sha256_logs": {
+    "tx.txt": "47dcc9f970b74b63af7fef73bc80eec54272c26a400f75795de547b4efbb2370",
+    "rx.txt": "595c2b24e3f186164e3d5d14053bb775781c74ecda9c0fb851bb27794f4edb3a",
+    "noise.txt": "e550c7700cf3a4184ae2fd1ecb3db72e5a74188d714b22bfcf82de5fc4764da2"
+  }
+}

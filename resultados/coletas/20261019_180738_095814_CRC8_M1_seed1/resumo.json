@@ -1,0 +1,82 @@
+{
+  "tecnica": "CRC8",
+  "modo": 1,
+  "N": 1000,
+  "seed": "1",
+  "contagens": {
+    "OK": 621,
+    "CORROMPIDO": 363,
+    "PERDIDO": 16,
+    "NAO_DETECTADO": 0
+  },
+  "taxa_nao_deteccao_percentual": 0.0,
+  "coleta_valida": true,
+  "elegivel_tabela_final": true,
+  "situacao": "VALIDA_COM_RESSALVAS",
+  "validacao_estrita_aprovada": false,
+  "ressalvas": [
+    "TX: sequência 695 com campos iniciais danificados; quadro preservado e conferido no NOISE. Tempos dessa linha excluídos das médias.",
+    "RX: bytes inválidos antes do START atual, na linha 1.",
+    "RX: mensagem auxiliar de lacuna danificada na linha 891; as classificações são conferidas separadamente."
+  ],
+  "avisos_validacao_estrita": [
+    "TX: bytes inválidos para UTF-8 no TXT.",
+    "RX: bytes inválidos para UTF-8 no TXT.",
+    "TX: 999 registros; esperado 1000.",
+    "TX: sequências ausentes, duplicadas ou fora da faixa."
+  ],
+  "auditoria_cruzada": {
+    "quadros_conferidos": 1000,
+    "quadros_tx_preservados": 1000,
+    "fragmentos_tx": [
+      {
+        "linha_txt": 702,
+        "seq_no_quadro": "695",
+        "quadro_hex": "A55A0202B710F788",
+        "calculo_us_preservado": "3",
+        "t_inicio_us": "NA",
+        "intervalo_us": "NA"
+      }
+    ]
+  },
+  "pendencias": [],
+  "metricas": {
+    "calculo_tx_us": {
+      "amostras": 999,
+      "media": 3.002002002002002,
+      "minimo": 3.0,
+      "maximo": 4.0
+    },
+    "verificacao_rx_us": {
+      "amostras": 984,
+      "media": 6.941056910569106,
+      "minimo": 6.0,
+      "maximo": 8.0
+    },
+    "intervalo_tx_us": {
+      "amostras": 998,
+      "media": 50999.99799599199,
+      "minimo": 50998.0,
+      "maximo": 51000.0
+    },
+    "intervalo_rx_us": {
+      "amostras": 999,
+      "media": 51000.07007007007,
+      "minimo": 50990.0,
+      "maximo": 51007.0
+    },
+    "recuperacao_rx_ms": {
+      "amostras": 16,
+      "media": 80.7314375,
+      "minimo": 52.011,
+      "maximo": 154.041
+    }
+  },
+  "overhead_bytes": 6,
+  "iniciada_em": "2026-10-19T18:07:38.095814-04:00",
+  "sha256_logs": {
+    "tx.txt": "37c58e1623b9d8e6f526e702e81801dae8c3f351da0c4a69beb0ca6df0c4ab8a",
+    "rx.txt": "4c458bc5d14ae1ac9b01493ae24409eb2ed48a71ccca060324fd826315d37b4b",
+    "noise.txt": "04bd294fffde3dfcd68a79fb3523ba5c995e261f300946f4be187dbbd49dd71e"
+  }
+}
