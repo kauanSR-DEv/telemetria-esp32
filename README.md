@@ -32,7 +32,7 @@ Depois da decisão, o RX consulta uma cópia do payload original para classifica
 Foram coletadas sete condições em **19/10/2026**, com **1000 quadros por condição**, semente 1 e NOISE v1.12. Os arquivos integrais e os CSVs estão em [resultados/coletas](resultados/coletas/).
 
 | Técnica | Modo | OK | CORROMPIDO | PERDIDO | Não detectado | Taxa (%) |
-|---|---:|---:|---:|---:|---:|---:|---:|
+|---|---:|---:|---:|---:|---:|---:|
 | SUM | 0 | 1000 | 0 | 0 | 0 | N/A |
 | SUM | 1 | 616 | 368 | 16 | 0 | 0,000000 |
 | SUM | 2 | 384 | 576 | 38 | 2 | 0,346021 |
